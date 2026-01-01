@@ -1,0 +1,73 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isPropertyOwner(propertyId) {
+      return isAuthenticated() &&
+        get(/databases/$(database)/documents/properties/$(propertyId)).data.ownerId == request.auth.uid;
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if isOwner(userId);
+      allow delete: if false; // Soft delete only
+    }
+
+    // Properties collection
+    match /properties/{propertyId} {
+      allow read: if isAuthenticated() &&
+        resource.data.ownerId == request.auth.uid;
+      allow create: if isAuthenticated();
+      allow update, delete: if isPropertyOwner(propertyId);
+    }
+
+    // Rooms collection
+    match /rooms/{roomId} {
+      allow read: if isAuthenticated() &&
+        isPropertyOwner(resource.data.propertyId);
+      allow create: if isAuthenticated() &&
+        isPropertyOwner(request.resource.data.propertyId);
+      allow update, delete: if isAuthenticated() &&
+        isPropertyOwner(resource.data.propertyId);
+    }
+
+    // Bookings collection
+    match /bookings/{bookingId} {
+      // Property owners can read/write their bookings
+      allow read: if isAuthenticated() &&
+        isPropertyOwner(resource.data.propertyId);
+      allow create: if true; // Public can create bookings
+      allow update: if isAuthenticated() &&
+        isPropertyOwner(resource.data.propertyId);
+      allow delete: if false; // No hard delete
+    }
+
+    // Access Codes collection
+    match /accessCodes/{codeId} {
+      allow read: if isAuthenticated() &&
+        isPropertyOwner(resource.data.propertyId);
+      allow create: if isAuthenticated() &&
+        isPropertyOwner(request.resource.data.propertyId);
+      allow update: if isAuthenticated() &&
+        isPropertyOwner(resource.data.propertyId);
+      allow delete: if false;
+    }
+
+    // Access Code History (read-only for property owners)
+    match /accessCodeHistory/{historyId} {
+      allow read: if isAuthenticated();
+      allow write: if false; // Server-side only
+    }
+  }
+}

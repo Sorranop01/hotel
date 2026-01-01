@@ -1,0 +1,77 @@
+# Development compose - uses Firebase Emulators
+services:
+  # ===========================================
+  # Firebase Emulators
+  # ===========================================
+  firebase-emulator:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - .:/app
+      - firebase-data:/app/.firebase
+    ports:
+      - "4000:4000"   # Emulator UI
+      - "8085:8085"   # Firestore
+      - "9099:9099"   # Auth
+      - "9199:9199"   # Storage
+    command: >
+      sh -c "npm install -g firebase-tools &&
+             firebase emulators:start --only auth,firestore,storage --project demo-staylock"
+    networks:
+      - staylock-dev
+
+  # ===========================================
+  # API Server - Development
+  # ===========================================
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./src:/app/src
+      - ./package.json:/app/package.json
+    environment:
+      - NODE_ENV=development
+      - API_PORT=3000
+      - CLIENT_URL=http://localhost:5173
+      - FIREBASE_PROJECT_ID=demo-staylock
+      - FIRESTORE_EMULATOR_HOST=firebase-emulator:8085
+      - FIREBASE_AUTH_EMULATOR_HOST=firebase-emulator:9099
+    depends_on:
+      - firebase-emulator
+    networks:
+      - staylock-dev
+
+  # ===========================================
+  # Frontend - Development
+  # ===========================================
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: dev-frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./src:/app/src
+      - ./index.html:/app/index.html
+      - ./vite.config.ts:/app/vite.config.ts
+      - ./tailwind.config.js:/app/tailwind.config.js
+    environment:
+      - VITE_FIREBASE_API_KEY=demo-api-key
+      - VITE_FIREBASE_AUTH_DOMAIN=demo-staylock.firebaseapp.com
+      - VITE_FIREBASE_PROJECT_ID=demo-staylock
+      - VITE_USE_EMULATORS=true
+    depends_on:
+      - api
+    networks:
+      - staylock-dev
+
+volumes:
+  firebase-data:
+
+networks:
+  staylock-dev:
+    driver: bridge
